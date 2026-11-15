@@ -13,6 +13,11 @@ const FALLBACK_MODEL = "gemini-2.5-flash";
 // slowdown tha. Exam notes ko thoda zyada jagah, baaki ko kam.
 const MAX_TOKENS = { chat: 600, exam: 1200, dost: 600 };
 
+// Har ek upstream call ka hard time limit — Google atak jaye to request
+// latki nahi rahegi, agla option try hoga. Poora budget ~25 second.
+const ATTEMPT_TIMEOUT_MS = 10000;
+const TOTAL_BUDGET_MS = 25000;
+
 const SYSTEM_PROMPTS = {
   chat: "You are Riya, a helpful, polite AI assistant. Reply in the same language the user writes in: if the user writes in Hindi (or Hinglish), reply in Hindi; if in English, reply in English. Keep answers clear, short and useful. Use simple formatting, no long lectures.",
   exam: "You are Riya, an exam preparation coach for a B.Tech Electronics and Communication student (GTU). Give exam-focused, point-wise, easy-to-remember notes. Use clear headings, short bullet points, simple definitions, formulas where needed, and real examples. End every notes answer with 3 to 5 important questions (with very short answers) that could come in the exam. When the user asks for a quiz, ask questions one by one and check each answer before moving on. Reply in the same language the user writes in (Hindi, Hinglish or English). Keep the structure clean so the notes can be saved as a PDF.",
@@ -20,6 +25,13 @@ const SYSTEM_PROMPTS = {
 };
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Timeout wala fetch — ms me koi jawab na aaye to call ko kaat do.
+function fetchTimeout(url, opts, ms) {
+  const c = new AbortController();
+  const t = setTimeout(() => c.abort(), ms);
+  return fetch(url, { ...opts, signal: c.signal }).finally(() => clearTimeout(t));
+}
 
 module.exports = async (req, res) => {
   // Warm-up ping — app khulte hi server ko jaga deta hai, taaki pehla
@@ -75,41 +87,55 @@ module.exports = async (req, res) => {
     ":generateContent?key=" +
     encodeURIComponent(apiKey);
 
+  const started = Date.now();
+  const elapsed = () => Date.now() - started;
+  let lastStatus = 0;
+  let lastText = "";
+
+  // Ek streaming attempt — timeout ya network error par null.
+  async function tryStream(model) {
+    try {
+      const r = await fetchTimeout(streamUrl(model), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      }, ATTEMPT_TIMEOUT_MS);
+      if (r.ok) return r;
+      lastStatus = r.status;
+      try { lastText = (await r.text()).slice(0, 200); } catch (e) { lastText = ""; }
+      return null;
+    } catch (e) {
+      lastStatus = 0;
+      lastText = "timeout";
+      return null;
+    }
+  }
+
   try {
-    // 1) Streaming try karo: pehle main model (2 baar, 503/429 par 2s ruk kar),
-    //    phir fallback model (1 baar). Jo pehle chal jaye wahi use karo.
+    // 1) Streaming: pehle main model, phir fallback model. Fast 503/429
+    //    mile to main model par ek baar 1.5s ruk kar dobara try karo.
     let r = null;
-    let lastStatus = 0;
-    let lastText = "";
     const models = MODEL === FALLBACK_MODEL ? [MODEL] : [MODEL, FALLBACK_MODEL];
     for (const m of models) {
-      for (let attempt = 0; attempt < 2; attempt++) {
-        r = await fetch(streamUrl(m), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-        if (r.ok) break;
-        lastStatus = r.status;
-        try { lastText = (await r.text()).slice(0, 200); } catch (e) { lastText = ""; }
-        if ((r.status === 503 || r.status === 429) && attempt === 0) {
-          await sleep(2000);
-          continue;
-        }
-        break;
+      if (elapsed() > 15000) break;
+      r = await tryStream(m);
+      if (r) break;
+      if (m === MODEL && (lastStatus === 503 || lastStatus === 429) && elapsed() < 12000) {
+        await sleep(1500);
+        r = await tryStream(m);
+        if (r) break;
       }
-      if (r.ok) break;
     }
 
     // 2) Streaming dono model par fail ho to ek baar plain (non-streaming)
     //    call try karo — stream endpoint ki problem ho to bhi jawab mile.
-    if (!r.ok) {
+    if (!r && elapsed() < TOTAL_BUDGET_MS - 8000) {
       try {
-        const r2 = await fetch(plainUrl(MODEL), {
+        const r2 = await fetchTimeout(plainUrl(MODEL), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
-        });
+        }, ATTEMPT_TIMEOUT_MS);
         if (r2.ok) {
           const data = await r2.json();
           const reply =
@@ -131,10 +157,13 @@ module.exports = async (req, res) => {
           lastStatus = r2.status;
           try { lastText = (await r2.text()).slice(0, 200); } catch (e) { /* ignore */ }
         }
-      } catch (e) { /* ignore — neeche error milega */ }
+      } catch (e) {
+        lastStatus = 0;
+        lastText = "timeout";
+      }
     }
 
-    if (!r.ok) {
+    if (!r) {
       const status = lastStatus === 400 || lastStatus === 403 ? "key" : lastStatus === 429 ? "quota" : "net";
       res.status(502).json({ error: status, upstream: lastStatus, detail: lastText });
       return;
