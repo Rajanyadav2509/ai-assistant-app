@@ -83,6 +83,7 @@ const STRINGS = {
     listening: "Sun rahi hoon... bolo",
     micUnsupported: "Is browser me mic support nahi hai. Chrome app me kholo.",
     thinking: "Soch rahi hoon",
+    waitReply: "Riya abhi jawab likh rahi hai — aapka message uske baad bhej dungi.",
     speak: "Sunao",
     copy: "Copy",
     pdf: "PDF",
@@ -103,6 +104,7 @@ const STRINGS = {
     listening: "Listening... speak now",
     micUnsupported: "Mic is not supported in this browser. Open it in the Chrome app.",
     thinking: "Thinking",
+    waitReply: "Riya is still writing her reply — I'll send your message right after.",
     speak: "Listen",
     copy: "Copy",
     pdf: "PDF",
@@ -381,9 +383,11 @@ async function askGemini(userText) {
 let busy = false;
 
 /* Pehle server proxy (/api/chat) try karo — shared key se chalta hai.
+   Server ab jawab STREAM karta hai: pehle shabd aate hi onToken se
+   bubble me likhne lagte hain, poora jawab aane ka intezaar nahi.
    Agar server par key set nahi hai (501) ya proxy fail ho, to apni
    Settings wali key se seedha Gemini ko call karo; woh bhi na ho to demo. */
-async function askViaProxy(userText) {
+async function askViaProxy(userText, onToken) {
   const messages = history
     .filter((h) => h.role === "user" || h.role === "model")
     .map((h) => ({ role: h.role, text: h.text }));
@@ -396,6 +400,33 @@ async function askViaProxy(userText) {
   });
   if (res.status === 501) throw new Error("no_proxy_key");
   if (!res.ok) throw new Error("proxy_fail");
+  const ct = res.headers.get("content-type") || "";
+  if (ct.includes("text/event-stream")) {
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = "";
+    let full = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      let idx;
+      while ((idx = buf.indexOf("\n\n")) >= 0) {
+        const chunk = buf.slice(0, idx);
+        buf = buf.slice(idx + 2);
+        const line = chunk.split("\n").find((l) => l.startsWith("data:"));
+        if (!line) continue;
+        const payload = line.slice(5).trim();
+        if (!payload || payload === "[DONE]") continue;
+        let obj;
+        try { obj = JSON.parse(payload); } catch (e) { continue; }
+        if (obj.error) throw new Error(obj.error === "key" ? "key" : obj.error === "quota" ? "quota" : "proxy_fail");
+        if (obj.t) { full += obj.t; if (onToken) onToken(obj.t); }
+      }
+    }
+    if (!full) throw new Error("proxy_fail");
+    return full.trim();
+  }
   const data = await res.json();
   if (!data.reply) throw new Error("proxy_fail");
   return data.reply;
@@ -407,21 +438,45 @@ async function askAndRender(userText) {
   const typing = addMsg(t("thinking"), "ai typing", { save: false });
   try {
     let reply;
+    let bubble = null;
+    let partial = "";
     try {
-      reply = await askViaProxy(userText);
+      // Stream: khaali bubble banao, shabd aate hi usme likhte jao.
+      typing.remove();
+      bubble = addMsg("", "ai", { save: false });
+      reply = await askViaProxy(userText, (tok) => {
+        partial += tok;
+        bubble.textContent += tok;
+        chatEl.scrollTop = chatEl.scrollHeight;
+      });
+      history.push({ role: "model", text: reply });
+      saveHistory();
+      attachActions(bubble, reply);
+      speak(reply);
     } catch (proxyErr) {
-      if (settings.apiKey) {
-        reply = await askGemini(userText);
-      } else if (proxyErr.message === "no_proxy_key") {
-        await new Promise((r) => setTimeout(r, 600));
-        reply = demoReply(userText);
+      if (partial.trim()) {
+        // Stream adhoora raha, par jo mila woh dikha do.
+        const done = partial.trim();
+        history.push({ role: "model", text: done });
+        saveHistory();
+        attachActions(bubble, done);
+        speak(done);
       } else {
-        throw proxyErr;
+        if (bubble) bubble.remove();
+        if (settings.apiKey) {
+          reply = await askGemini(userText);
+          addMsg(reply, "ai", { actions: true });
+          speak(reply);
+        } else if (proxyErr.message === "no_proxy_key") {
+          await new Promise((r) => setTimeout(r, 600));
+          reply = demoReply(userText);
+          addMsg(reply, "ai", { actions: true });
+          speak(reply);
+        } else {
+          throw proxyErr;
+        }
       }
     }
-    typing.remove();
-    addMsg(reply, "ai", { actions: true });
-    speak(reply);
   } catch (err) {
     typing.remove();
     const map = { key: "errorKey", quota: "errorQuota", net: "errorNet", proxy_fail: "errorProxy" };
@@ -432,12 +487,25 @@ async function askAndRender(userText) {
   inputEl.focus();
 }
 
+/* Jawab aate waqt send dabao to message gayab nahi hoga — woh line me
+   lag jayega aur pehla jawab khatam hote hi apne aap bhej diya jayega. */
+let queuedText = null;
 async function sendMessage() {
   const text = inputEl.value.trim();
-  if (!text || busy) return;
+  if (!text) return;
   inputEl.value = "";
   addMsg(text, "user");
+  if (busy) {
+    queuedText = text;
+    showToast(t("waitReply"));
+    return;
+  }
   await askAndRender(text);
+  while (queuedText) {
+    const next = queuedText;
+    queuedText = null;
+    await askAndRender(next);
+  }
 }
 
 sendBtn.onclick = sendMessage;
@@ -522,6 +590,9 @@ $("saveSettingsBtn").onclick = () => {
 /* ---------- Init ---------- */
 saveSettings();
 setMode(settings.mode, false);
+// App khulte hi server ko jaga do (warm-up ping) — pehla message tez
+// aayega, cold start ka wait nahi. Koi Gemini call nahi hoti.
+fetch("/api/chat").catch(() => { /* offline ho to ignore */ });
 if (history.length > 0) {
   history.forEach((h) => addMsg(h.text, h.role === "user" ? "user" : "ai", { save: false, actions: h.role === "model" }));
 } else {
