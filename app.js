@@ -79,7 +79,7 @@ const mode = () => MODES[settings.mode] || MODES.chat;
 /* ---------- UI text (Hindi default, English when chosen) ---------- */
 const STRINGS = {
   hi: {
-    needKey: "API key set nahi hai, isliye main demo mode me hoon. Asli jawab ke liye Settings me apni free Gemini API key dalo.",
+    needKey: "Abhi main server se connect nahi ho pa rahi. Thodi der baad dobara try karo.",
     listening: "Sun rahi hoon... bolo",
     micUnsupported: "Is browser me mic support nahi hai. Chrome app me kholo.",
     thinking: "Soch rahi hoon",
@@ -88,7 +88,7 @@ const STRINGS = {
     pdf: "PDF",
     again: "Dobara",
     copied: "Copy ho gaya.",
-    errorKey: "API key galat lagti hai. Settings me key dobara check karo.",
+    errorKey: "Server se jawab nahi mila. Thodi der baad dobara try karo.",
     errorQuota: "Aaj ki free limit khatam ho gayi lagti hai. Thodi der baad try karo.",
     errorNet: "Internet se connect nahi ho pa raha. Connection check karo aur dobara try karo.",
     errorGeneric: "Kuch gadbad ho gayi. Dobara try karo.",
@@ -99,7 +99,7 @@ const STRINGS = {
     pdfReady: "Notes ka page taiyaar hai — print dialog me 'Save as PDF' chuno.",
   },
   en: {
-    needKey: "No API key set, so I am running in demo mode. Add your free Gemini API key in Settings for real answers.",
+    needKey: "I can't reach the server right now. Please try again in a while.",
     listening: "Listening... speak now",
     micUnsupported: "Mic is not supported in this browser. Open it in the Chrome app.",
     thinking: "Thinking",
@@ -108,7 +108,7 @@ const STRINGS = {
     pdf: "PDF",
     again: "Again",
     copied: "Copied.",
-    errorKey: "The API key looks wrong. Please check the key in Settings.",
+    errorKey: "The server did not answer. Please try again in a while.",
     errorQuota: "The free limit for today seems over. Try again in a while.",
     errorNet: "Could not reach the internet. Check your connection and try again.",
     errorGeneric: "Something went wrong. Please try again.",
@@ -497,7 +497,6 @@ if ("serviceWorker" in navigator) {
 /* ---------- Settings modal ---------- */
 const modal = $("settingsModal");
 function openSettings() {
-  $("apiKeyInput").value = settings.apiKey;
   $("modelInput").value = settings.model;
   $("assistantNameInput").value = settings.assistantName;
   $("langSelect").value = settings.lang;
@@ -509,7 +508,6 @@ $("settingsBtn").onclick = openSettings;
 $("closeSettingsBtn").onclick = closeSettings;
 modal.addEventListener("click", (e) => { if (e.target === modal) closeSettings(); });
 $("saveSettingsBtn").onclick = () => {
-  settings.apiKey = $("apiKeyInput").value.trim();
   settings.model = $("modelInput").value.trim() || defaults.model;
   settings.assistantName = $("assistantNameInput").value.trim() || defaults.assistantName;
   settings.lang = $("langSelect").value;
@@ -518,7 +516,7 @@ $("saveSettingsBtn").onclick = () => {
   inputEl.placeholder = mode().placeholder;
   renderChips();
   closeSettings();
-  showToast(settings.apiKey ? "Settings save ho gayi." : t("needKey"));
+  showToast("Settings save ho gayi.");
 };
 
 /* ---------- Init ---------- */
