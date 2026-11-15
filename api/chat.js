@@ -6,8 +6,9 @@
 // Isliye shared app bina key maange sabke liye chalta hai.
 
 const MODEL = process.env.GEMINI_MODEL || "gemini-3.8-flash";
-// Pehla model busy ho to dusra try karo — jawab rukna nahi chahiye.
-const FALLBACK_MODEL = "gemini-2.5-flash";
+// Pehla model busy ho to dusre try karo — jawab rukna nahi chahiye.
+// Lite model ki capacity aksar alag hoti hai, isliye woh bhi list me hai.
+const FALLBACK_MODELS = ["gemini-2.5-flash-lite", "gemini-2.5-flash"];
 
 // Jawab chhote rakho taaki tez aaye — lambi generation hi sabse bada
 // slowdown tha. Exam notes ko thoda zyada jagah, baaki ko kam.
@@ -15,7 +16,7 @@ const MAX_TOKENS = { chat: 600, exam: 1200, dost: 600 };
 
 // Har ek upstream call ka hard time limit — Google atak jaye to request
 // latki nahi rahegi, agla option try hoga. Poora budget ~25 second.
-const ATTEMPT_TIMEOUT_MS = 10000;
+const ATTEMPT_TIMEOUT_MS = 7000;
 const TOTAL_BUDGET_MS = 25000;
 
 const SYSTEM_PROMPTS = {
@@ -112,19 +113,14 @@ module.exports = async (req, res) => {
   }
 
   try {
-    // 1) Streaming: pehle main model, phir fallback model. Fast 503/429
-    //    mile to main model par ek baar 1.5s ruk kar dobara try karo.
+    // 1) Streaming: main model, phir fallback models — jo pehle chal jaye
+    //    wahi use karo. Har attempt max 7s, taaki 3 model bhi budget me aaye.
     let r = null;
-    const models = MODEL === FALLBACK_MODEL ? [MODEL] : [MODEL, FALLBACK_MODEL];
+    const models = [MODEL, ...FALLBACK_MODELS].filter((m, i, a) => a.indexOf(m) === i);
     for (const m of models) {
-      if (elapsed() > 15000) break;
+      if (elapsed() > 18000) break;
       r = await tryStream(m);
       if (r) break;
-      if (m === MODEL && (lastStatus === 503 || lastStatus === 429) && elapsed() < 12000) {
-        await sleep(1500);
-        r = await tryStream(m);
-        if (r) break;
-      }
     }
 
     // 2) Streaming dono model par fail ho to ek baar plain (non-streaming)
@@ -164,7 +160,10 @@ module.exports = async (req, res) => {
     }
 
     if (!r) {
-      const status = lastStatus === 400 || lastStatus === 403 ? "key" : lastStatus === 429 ? "quota" : "net";
+      // 503 ya timeout matlab Google ka model busy hai — user ke internet
+      // ki problem nahi hai, isliye alag "busy" error bhejo taaki app sahi
+      // message dikhaye ("internet issue" nahi).
+      const status = lastStatus === 400 || lastStatus === 403 ? "key" : lastStatus === 429 ? "quota" : (lastStatus === 503 || lastText === "timeout") ? "busy" : "net";
       res.status(502).json({ error: status, upstream: lastStatus, detail: lastText });
       return;
     }
