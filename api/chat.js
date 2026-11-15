@@ -6,6 +6,8 @@
 // Isliye shared app bina key maange sabke liye chalta hai.
 
 const MODEL = process.env.GEMINI_MODEL || "gemini-3.8-flash";
+// Pehla model busy ho to dusra try karo — jawab rukna nahi chahiye.
+const FALLBACK_MODEL = "gemini-2.5-flash";
 
 // Jawab chhote rakho taaki tez aaye — lambi generation hi sabse bada
 // slowdown tha. Exam notes ko thoda zyada jagah, baaki ko kam.
@@ -16,6 +18,8 @@ const SYSTEM_PROMPTS = {
   exam: "You are Riya, an exam preparation coach for a B.Tech Electronics and Communication student (GTU). Give exam-focused, point-wise, easy-to-remember notes. Use clear headings, short bullet points, simple definitions, formulas where needed, and real examples. End every notes answer with 3 to 5 important questions (with very short answers) that could come in the exam. When the user asks for a quiz, ask questions one by one and check each answer before moving on. Reply in the same language the user writes in (Hindi, Hinglish or English). Keep the structure clean so the notes can be saved as a PDF.",
   dost: "You are Riya, the user's close friend — warm, supportive, fun and honest. Talk like a real friend in Hinglish/Hindi. Motivate, listen, joke lightly, and help with studies without sounding like a textbook. If the user is stressed or low, be kind first, then give one small practical step. Reply in the same language the user writes in.",
 };
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 module.exports = async (req, res) => {
   // Warm-up ping — app khulte hi server ko jaga deta hai, taaki pehla
@@ -55,36 +59,79 @@ module.exports = async (req, res) => {
     parts: [{ text: String(m.text || "").slice(0, 4000) }],
   }));
 
+  const payload = {
+    system_instruction: { parts: [{ text: SYSTEM_PROMPTS[mode] }] },
+    contents,
+    generationConfig: { temperature: 0.8, maxOutputTokens: MAX_TOKENS[mode] || 600 },
+  };
+  const streamUrl = (model) =>
+    "https://generativelanguage.googleapis.com/v1beta/models/" +
+    encodeURIComponent(model) +
+    ":streamGenerateContent?alt=sse&key=" +
+    encodeURIComponent(apiKey);
+  const plainUrl = (model) =>
+    "https://generativelanguage.googleapis.com/v1beta/models/" +
+    encodeURIComponent(model) +
+    ":generateContent?key=" +
+    encodeURIComponent(apiKey);
+
   try {
-    // Model kabhi-kabhi 503 (high demand) deta hai — woh temporary hota
-    // hai, isliye ek baar 2 second ruk kar dobara try karo.
+    // 1) Streaming try karo: pehle main model (2 baar, 503/429 par 2s ruk kar),
+    //    phir fallback model (1 baar). Jo pehle chal jaye wahi use karo.
     let r = null;
     let lastStatus = 0;
     let lastText = "";
-    for (let attempt = 0; attempt < 2; attempt++) {
-      r = await fetch(
-        "https://generativelanguage.googleapis.com/v1beta/models/" +
-          encodeURIComponent(MODEL) +
-          ":streamGenerateContent?alt=sse&key=" +
-          encodeURIComponent(apiKey),
-        {
+    const models = MODEL === FALLBACK_MODEL ? [MODEL] : [MODEL, FALLBACK_MODEL];
+    for (const m of models) {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        r = await fetch(streamUrl(m), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            system_instruction: { parts: [{ text: SYSTEM_PROMPTS[mode] }] },
-            contents,
-            generationConfig: { temperature: 0.8, maxOutputTokens: MAX_TOKENS[mode] || 600 },
-          }),
+          body: JSON.stringify(payload),
+        });
+        if (r.ok) break;
+        lastStatus = r.status;
+        try { lastText = (await r.text()).slice(0, 200); } catch (e) { lastText = ""; }
+        if ((r.status === 503 || r.status === 429) && attempt === 0) {
+          await sleep(2000);
+          continue;
         }
-      );
-      if (r.ok) break;
-      lastStatus = r.status;
-      try { lastText = (await r.text()).slice(0, 200); } catch (e) { lastText = ""; }
-      if ((r.status === 503 || r.status === 429) && attempt === 0) {
-        await new Promise((w) => setTimeout(w, 2000));
-        continue;
+        break;
       }
-      break;
+      if (r.ok) break;
+    }
+
+    // 2) Streaming dono model par fail ho to ek baar plain (non-streaming)
+    //    call try karo — stream endpoint ki problem ho to bhi jawab mile.
+    if (!r.ok) {
+      try {
+        const r2 = await fetch(plainUrl(MODEL), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (r2.ok) {
+          const data = await r2.json();
+          const reply =
+            data && data.candidates && data.candidates[0] && data.candidates[0].content &&
+            data.candidates[0].content.parts && data.candidates[0].content.parts[0] &&
+            data.candidates[0].content.parts[0].text;
+          if (reply) {
+            res.writeHead(200, {
+              "Content-Type": "text/event-stream",
+              "Cache-Control": "no-cache",
+              Connection: "keep-alive",
+            });
+            res.write("data: " + JSON.stringify({ t: reply.trim() }) + "\n\n");
+            res.write("data: " + JSON.stringify({ done: true }) + "\n\n");
+            res.end();
+            return;
+          }
+        } else {
+          lastStatus = r2.status;
+          try { lastText = (await r2.text()).slice(0, 200); } catch (e) { /* ignore */ }
+        }
+      } catch (e) { /* ignore — neeche error milega */ }
     }
 
     if (!r.ok) {
@@ -116,10 +163,10 @@ module.exports = async (req, res) => {
           buf = buf.slice(idx + 2);
           const line = chunk.split("\n").find((l) => l.startsWith("data:"));
           if (!line) continue;
-          const payload = line.slice(5).trim();
-          if (!payload || payload === "[DONE]") continue;
+          const payloadLine = line.slice(5).trim();
+          if (!payloadLine || payloadLine === "[DONE]") continue;
           let obj;
-          try { obj = JSON.parse(payload); } catch (e) { continue; }
+          try { obj = JSON.parse(payloadLine); } catch (e) { continue; }
           const t =
             obj && obj.candidates && obj.candidates[0] && obj.candidates[0].content &&
             obj.candidates[0].content.parts && obj.candidates[0].content.parts[0] &&
