@@ -8,7 +8,7 @@
 const MODEL = process.env.GEMINI_MODEL || "gemini-3.8-flash";
 // Pehla model busy ho to dusre try karo — jawab rukna nahi chahiye.
 // Lite model ki capacity aksar alag hoti hai, isliye woh bhi list me hai.
-const FALLBACK_MODELS = ["gemini-2.5-flash-lite", "gemini-2.5-flash"];
+const FALLBACK_MODELS = ["gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-2.0-flash"];
 
 // Jawab chhote rakho taaki tez aaye — lambi generation hi sabse bada
 // slowdown tha. Exam notes ko thoda zyada jagah, baaki ko kam.
