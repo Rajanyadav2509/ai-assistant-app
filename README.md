@@ -12,7 +12,7 @@ Chat karo, bol kar poochho, aur jawab suno. Hindi aur English dono me.
   - **Dost Mode** — dost jaisa support: motivation, stress kam karne ke tips, aur dil se baatein
 - **PDF notes** — kisi bhi AI jawab ke neeche **PDF** button dabao: notes ka saaf page banega, print dialog me **Save as PDF** chuno. Hindi notes bhi sahi print hote hain.
 - **Voice input** — mic button se bol kar poochho (Chrome me)
-- **Voice reply** — jawab bol kar sunaya bhi ja sakta hai
+- **Voice reply** — jawab meethi, warm, cute female voice me bol kar sunaya jata hai
 - **Hindi + English** — jis bhasha me likho, usi me jawab
 - **Copy, Dobara (regenerate), Sunao** — har AI jawab ke neeche buttons
 - **Chat history** — purani chat aapke device me save rehti hai

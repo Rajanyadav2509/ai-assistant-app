@@ -222,12 +222,36 @@ function detectSpeechLang(text) {
   return /[\u0900-\u097F]/.test(text) ? "hi-IN" : "en-US";
 }
 
+/* ---------- Speech: listen + speak (sweet, warm, cute voice) ---------- */
+/* Phone/browser ki available voices me se warm female voice chuno —
+   Hindi ke liye Hindi female, English ke liye English female.
+   Pitch thoda upar (1.15) aur speed thodi slow (0.95) — meethi, warm tone. */
+function pickWarmVoice(langCode) {
+  if (!("speechSynthesis" in window)) return null;
+  const voices = window.speechSynthesis.getVoices() || [];
+  if (!voices.length) return null;
+  const want = langCode.indexOf("hi") === 0 ? "hi" : "en";
+  const score = (v) => {
+    const hay = ((v.name || "") + " " + (v.lang || "")).toLowerCase();
+    let s = 0;
+    if ((v.lang || "").toLowerCase().indexOf(want) === 0) s += 3;
+    if (/female|woman|girl|samantha|zira|aria|google हिन्दी|google hindi|neural|natural/.test(hay)) s += 2;
+    if (/google/.test(hay)) s += 1;
+    return s;
+  };
+  return voices.slice().sort((a, b) => score(b) - score(a))[0] || null;
+}
+
 function speak(text) {
   if (!settings.voiceReply || !("speechSynthesis" in window)) return;
   window.speechSynthesis.cancel();
   const clean = text.replace(/[*#`>|_]/g, "");
   const u = new SpeechSynthesisUtterance(clean);
-  u.lang = detectSpeechLang(text);
+  const lang = detectSpeechLang(text);
+  u.lang = lang;
+  const v = pickWarmVoice(lang);
+  if (v) u.voice = v;
+  u.pitch = 1.15;
   u.rate = 0.95;
   window.speechSynthesis.speak(u);
 }
