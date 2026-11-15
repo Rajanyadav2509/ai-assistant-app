@@ -91,6 +91,7 @@ const STRINGS = {
     copied: "Copy ho gaya.",
     errorKey: "Server se jawab nahi mila. Thodi der baad dobara try karo.",
     errorQuota: "Aaj ki free limit khatam ho gayi lagti hai. Thodi der baad try karo.",
+    errorBusy: "AI model abhi busy hai. 1-2 minute baad dobara try karo.",
     errorNet: "Internet se connect nahi ho pa raha. Connection check karo aur dobara try karo.",
     errorGeneric: "Kuch gadbad ho gayi. Dobara try karo.",
     errorProxy: "Server se jawab nahi mila. Thodi der baad dobara try karo.",
@@ -112,6 +113,7 @@ const STRINGS = {
     copied: "Copied.",
     errorKey: "The server did not answer. Please try again in a while.",
     errorQuota: "The free limit for today seems over. Try again in a while.",
+    errorBusy: "The AI model is busy right now. Please try again in 1-2 minutes.",
     errorNet: "Could not reach the internet. Check your connection and try again.",
     errorGeneric: "Something went wrong. Please try again.",
     errorProxy: "The server did not answer. Please try again in a while.",
@@ -399,7 +401,18 @@ async function askViaProxy(userText, onToken) {
     body: JSON.stringify({ mode: settings.mode, messages }),
   });
   if (res.status === 501) throw new Error("no_proxy_key");
-  if (!res.ok) throw new Error("proxy_fail");
+  if (!res.ok) {
+    // Server ne error JSON bheja ho to uska code padho — "busy" matlab
+    // Google ka model busy hai, user ke internet ki problem nahi.
+    let code = "proxy_fail";
+    try {
+      const e = await res.json();
+      if (e && e.error === "busy") code = "busy";
+      else if (e && e.error === "key") code = "key";
+      else if (e && e.error === "quota") code = "quota";
+    } catch (e2) { /* ignore */ }
+    throw new Error(code);
+  }
   const ct = res.headers.get("content-type") || "";
   if (ct.includes("text/event-stream")) {
     const reader = res.body.getReader();
@@ -420,7 +433,7 @@ async function askViaProxy(userText, onToken) {
         if (!payload || payload === "[DONE]") continue;
         let obj;
         try { obj = JSON.parse(payload); } catch (e) { continue; }
-        if (obj.error) throw new Error(obj.error === "key" ? "key" : obj.error === "quota" ? "quota" : "proxy_fail");
+        if (obj.error) throw new Error(obj.error === "key" ? "key" : obj.error === "quota" ? "quota" : obj.error === "busy" ? "busy" : "proxy_fail");
         if (obj.t) { full += obj.t; if (onToken) onToken(obj.t); }
       }
     }
@@ -479,7 +492,7 @@ async function askAndRender(userText) {
     }
   } catch (err) {
     typing.remove();
-    const map = { key: "errorKey", quota: "errorQuota", net: "errorNet", proxy_fail: "errorProxy" };
+    const map = { key: "errorKey", quota: "errorQuota", net: "errorNet", proxy_fail: "errorProxy", busy: "errorBusy" };
     addMsg(t(map[err.message] || "errorGeneric"), "ai system", { save: false });
   }
   busy = false;
