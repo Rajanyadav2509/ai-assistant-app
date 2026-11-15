@@ -121,7 +121,7 @@ sakta hai, aur apni free Gemini key dal kar chat kar sakta hai.
 ## Apne hisaab se badlo
 
 - **Assistant ka naam** — Settings me badlo, ya `app.js` me `defaults.assistantName`.
-- **Model** — Settings me model naam badlo (jaise `gemini-2.0-flash`).
+- **Model** — Settings me model naam badlo (jaise `gemini-3.8-flash`).
 - **Rang / design** — `styles.css` me `:root` wale colors badlo.
 - **Welcome message aur suggestion chips** — `app.js` me `STRINGS` section me hain.
 

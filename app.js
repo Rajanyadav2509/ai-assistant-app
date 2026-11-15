@@ -19,7 +19,7 @@ const LS_HISTORY = "riya-ai-history-v1";
 /* ---------- Settings ---------- */
 const defaults = {
   apiKey: "",
-  model: "gemini-2.0-flash",
+  model: "gemini-3.8-flash",
   assistantName: "Riya",
   lang: "auto",       // auto | hi | en
   voiceReply: true,
@@ -43,7 +43,7 @@ const MODES = {
     placeholder: "Kuch bhi poochho...",
     welcome: "Namaste! Main {name} hoon, aapki AI assistant. Aap mujhse kuch bhi poochh sakte ho — likh kar ya bol kar. Hindi ya English, jo aapko pasand ho.",
     modeOn: "Chat mode on hai.",
-    chips: ["LinkedIn post idea do", "Caption likho", "Email draft likho", "Aasan bhasha me samjhao"],
+    chips: ["Mujhe kuch naya sikhao", "Ek kahani sunao", "Aaj ka motivation do", "Aasan bhasha me samjhao"],
     system: "You are {name}, a helpful, polite AI assistant. " +
       "Reply in the same language the user writes in: if the user writes in Hindi (or Hinglish), reply in Hindi; if in English, reply in English. " +
       "Keep answers clear, short and useful. Use simple formatting, no long lectures. " +
