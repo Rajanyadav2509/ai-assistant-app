@@ -345,10 +345,6 @@ function systemPrompt() {
   return mode().system.replaceAll("{name}", settings.assistantName);
 }
 
-function demoReply(text) {
-  return t("needKey") + "\n\nAapne poochha: \"" + text + "\"";
-}
-
 async function askGemini(userText) {
   const url = "https://generativelanguage.googleapis.com/v1beta/models/" +
     encodeURIComponent(settings.model) + ":generateContent?key=" + encodeURIComponent(settings.apiKey);
@@ -388,7 +384,8 @@ let busy = false;
    Server ab jawab STREAM karta hai: pehle shabd aate hi onToken se
    bubble me likhne lagte hain, poora jawab aane ka intezaar nahi.
    Agar server par key set nahi hai (501) ya proxy fail ho, to apni
-   Settings wali key se seedha Gemini ko call karo; woh bhi na ho to demo. */
+   Settings wali key se seedha Gemini ko call karo; woh bhi na ho to
+   imaandaar error message dikhao — demo kabhi nahi. */
 async function askViaProxy(userText, onToken) {
   const messages = history
     .filter((h) => h.role === "user" || h.role === "model")
@@ -480,19 +477,17 @@ async function askAndRender(userText) {
           reply = await askGemini(userText);
           addMsg(reply, "ai", { actions: true });
           speak(reply);
-        } else if (proxyErr.message === "no_proxy_key") {
-          await new Promise((r) => setTimeout(r, 600));
-          reply = demoReply(userText);
-          addMsg(reply, "ai", { actions: true });
-          speak(reply);
         } else {
+          // Server fail ho to demo message kabhi nahi — imaandaar error
+          // dikhao ("busy hai, dobara try karo"). "Settings me key dalo"
+          // bolna bekaar hai, kyunki Settings me key daalne ki jagah hi nahi hai.
           throw proxyErr;
         }
       }
     }
   } catch (err) {
     typing.remove();
-    const map = { key: "errorKey", quota: "errorQuota", net: "errorNet", proxy_fail: "errorProxy", busy: "errorBusy" };
+    const map = { key: "errorKey", quota: "errorQuota", net: "errorNet", proxy_fail: "errorProxy", busy: "errorBusy", no_proxy_key: "errorKey" };
     addMsg(t(map[err.message] || "errorGeneric"), "ai system", { save: false });
   }
   busy = false;

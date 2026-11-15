@@ -1,6 +1,6 @@
 /* Riya AI Assistant — service worker: app shell ko cache karta hai
    taaki app phone me install hone ke baad jaldi khule. */
-const CACHE = "riya-ai-v1";
+const CACHE = "riya-ai-v3.6";
 const FILES = [
   "./",
   "index.html",
