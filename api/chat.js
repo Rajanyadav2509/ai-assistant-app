@@ -56,30 +56,40 @@ module.exports = async (req, res) => {
   }));
 
   try {
-    const r = await fetch(
-      "https://generativelanguage.googleapis.com/v1beta/models/" +
-        encodeURIComponent(MODEL) +
-        ":streamGenerateContent?alt=sse&key=" +
-        encodeURIComponent(apiKey),
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          system_instruction: { parts: [{ text: SYSTEM_PROMPTS[mode] }] },
-          contents,
-          generationConfig: { temperature: 0.8, maxOutputTokens: MAX_TOKENS[mode] || 600 },
-        }),
+    // Model kabhi-kabhi 503 (high demand) deta hai — woh temporary hota
+    // hai, isliye ek baar 2 second ruk kar dobara try karo.
+    let r = null;
+    let lastStatus = 0;
+    let lastText = "";
+    for (let attempt = 0; attempt < 2; attempt++) {
+      r = await fetch(
+        "https://generativelanguage.googleapis.com/v1beta/models/" +
+          encodeURIComponent(MODEL) +
+          ":streamGenerateContent?alt=sse&key=" +
+          encodeURIComponent(apiKey),
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            system_instruction: { parts: [{ text: SYSTEM_PROMPTS[mode] }] },
+            contents,
+            generationConfig: { temperature: 0.8, maxOutputTokens: MAX_TOKENS[mode] || 600 },
+          }),
+        }
+      );
+      if (r.ok) break;
+      lastStatus = r.status;
+      try { lastText = (await r.text()).slice(0, 200); } catch (e) { lastText = ""; }
+      if ((r.status === 503 || r.status === 429) && attempt === 0) {
+        await new Promise((w) => setTimeout(w, 2000));
+        continue;
       }
-    );
+      break;
+    }
 
     if (!r.ok) {
-      let upstream = "";
-      try {
-        const errText = await r.text();
-        upstream = errText.slice(0, 200);
-      } catch (e) { /* ignore */ }
-      const status = r.status === 400 || r.status === 403 ? "key" : r.status === 429 ? "quota" : "net";
-      res.status(502).json({ error: status, upstream: r.status, detail: upstream });
+      const status = lastStatus === 400 || lastStatus === 403 ? "key" : lastStatus === 429 ? "quota" : "net";
+      res.status(502).json({ error: status, upstream: lastStatus, detail: lastText });
       return;
     }
 
