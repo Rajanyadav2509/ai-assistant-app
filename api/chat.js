@@ -159,11 +159,57 @@ module.exports = async (req, res) => {
       }
     }
 
+    // 3) Gemini ke saare models fail ho gaye aur OpenAI key set hai to
+    //    ChatGPT (gpt-4o-mini) se jawab lo — ye tez aur reliable hai.
+    //    Key set nahi hai to ye step chupchaap skip ho jata hai.
+    if (!r && process.env.OPENAI_API_KEY && elapsed() < TOTAL_BUDGET_MS - 8000) {
+      try {
+        const openaiMessages = [
+          { role: "system", content: SYSTEM_PROMPTS[mode] },
+          ...messages.map((m) => ({ role: m.role === "user" ? "user" : "assistant", content: String(m.text || "").slice(0, 4000) })),
+        ];
+        const r3 = await fetchTimeout("https://api.openai.com/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: "Bearer " + process.env.OPENAI_API_KEY,
+          },
+          body: JSON.stringify({
+            model: "gpt-4o-mini",
+            messages: openaiMessages,
+            temperature: 0.8,
+            max_tokens: MAX_TOKENS[mode] || 600,
+          }),
+        }, ATTEMPT_TIMEOUT_MS);
+        if (r3.ok) {
+          const data3 = await r3.json();
+          const reply3 = data3 && data3.choices && data3.choices[0] && data3.choices[0].message && data3.choices[0].message.content;
+          if (reply3) {
+            res.writeHead(200, {
+              "Content-Type": "text/event-stream",
+              "Cache-Control": "no-cache",
+              Connection: "keep-alive",
+            });
+            res.write("data: " + JSON.stringify({ t: reply3.trim() }) + "\n\n");
+            res.write("data: " + JSON.stringify({ done: true }) + "\n\n");
+            res.end();
+            return;
+          }
+        } else {
+          lastStatus = r3.status;
+          try { lastText = (await r3.text()).slice(0, 200); } catch (e) { /* ignore */ }
+        }
+      } catch (e) {
+        lastStatus = 0;
+        lastText = "timeout";
+      }
+    }
+
     if (!r) {
       // 503 ya timeout matlab Google ka model busy hai — user ke internet
       // ki problem nahi hai, isliye alag "busy" error bhejo taaki app sahi
       // message dikhaye ("internet issue" nahi).
-      const status = lastStatus === 400 || lastStatus === 403 ? "key" : lastStatus === 429 ? "quota" : (lastStatus === 503 || lastText === "timeout") ? "busy" : "net";
+      const status = lastStatus === 400 || lastStatus === 401 || lastStatus === 403 ? "key" : lastStatus === 429 ? "quota" : (lastStatus === 503 || lastText === "timeout") ? "busy" : "net";
       res.status(502).json({ error: status, upstream: lastStatus, detail: lastText });
       return;
     }
