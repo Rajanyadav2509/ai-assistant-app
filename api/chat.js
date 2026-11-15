@@ -7,6 +7,10 @@
 
 const MODEL = process.env.GEMINI_MODEL || "gemini-3.8-flash";
 
+// Jawab chhote rakho taaki tez aaye — lambi generation hi sabse bada
+// slowdown tha. Exam notes ko thoda zyada jagah, baaki ko kam.
+const MAX_TOKENS = { chat: 600, exam: 1200, dost: 600 };
+
 const SYSTEM_PROMPTS = {
   chat: "You are Riya, a helpful, polite AI assistant. Reply in the same language the user writes in: if the user writes in Hindi (or Hinglish), reply in Hindi; if in English, reply in English. Keep answers clear, short and useful. Use simple formatting, no long lectures.",
   exam: "You are Riya, an exam preparation coach for a B.Tech Electronics and Communication student (GTU). Give exam-focused, point-wise, easy-to-remember notes. Use clear headings, short bullet points, simple definitions, formulas where needed, and real examples. End every notes answer with 3 to 5 important questions (with very short answers) that could come in the exam. When the user asks for a quiz, ask questions one by one and check each answer before moving on. Reply in the same language the user writes in (Hindi, Hinglish or English). Keep the structure clean so the notes can be saved as a PDF.",
@@ -14,6 +18,12 @@ const SYSTEM_PROMPTS = {
 };
 
 module.exports = async (req, res) => {
+  // Warm-up ping — app khulte hi server ko jaga deta hai, taaki pehla
+  // asli message cold start ki wajah se slow na ho. Koi Gemini call nahi.
+  if (req.method === "GET") {
+    res.status(200).json({ ok: true });
+    return;
+  }
   if (req.method !== "POST") {
     res.status(405).json({ error: "method" });
     return;
@@ -49,7 +59,7 @@ module.exports = async (req, res) => {
     const r = await fetch(
       "https://generativelanguage.googleapis.com/v1beta/models/" +
         encodeURIComponent(MODEL) +
-        ":generateContent?key=" +
+        ":streamGenerateContent?alt=sse&key=" +
         encodeURIComponent(apiKey),
       {
         method: "POST",
@@ -57,7 +67,7 @@ module.exports = async (req, res) => {
         body: JSON.stringify({
           system_instruction: { parts: [{ text: SYSTEM_PROMPTS[mode] }] },
           contents,
-          generationConfig: { temperature: 0.8, maxOutputTokens: 1500 },
+          generationConfig: { temperature: 0.8, maxOutputTokens: MAX_TOKENS[mode] || 600 },
         }),
       }
     );
@@ -73,22 +83,49 @@ module.exports = async (req, res) => {
       return;
     }
 
-    const data = await r.json();
-    const reply =
-      data &&
-      data.candidates &&
-      data.candidates[0] &&
-      data.candidates[0].content &&
-      data.candidates[0].content.parts &&
-      data.candidates[0].content.parts[0] &&
-      data.candidates[0].content.parts[0].text;
-
-    if (!reply) {
-      res.status(502).json({ error: "generic" });
-      return;
-    }
-    res.status(200).json({ reply: reply.trim() });
+    // Stream: Gemini ke tukde aate hi client ko bhej do — user ko pehle
+    // shabd turant dikhne lagenge, poora jawab aane ka intezaar nahi.
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+    });
+    const send = (obj) => { res.write("data: " + JSON.stringify(obj) + "\n\n"); };
+    let sent = 0;
+    try {
+      const reader = r.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        let idx;
+        while ((idx = buf.indexOf("\n\n")) >= 0) {
+          const chunk = buf.slice(0, idx);
+          buf = buf.slice(idx + 2);
+          const line = chunk.split("\n").find((l) => l.startsWith("data:"));
+          if (!line) continue;
+          const payload = line.slice(5).trim();
+          if (!payload || payload === "[DONE]") continue;
+          let obj;
+          try { obj = JSON.parse(payload); } catch (e) { continue; }
+          const t =
+            obj && obj.candidates && obj.candidates[0] && obj.candidates[0].content &&
+            obj.candidates[0].content.parts && obj.candidates[0].content.parts[0] &&
+            obj.candidates[0].content.parts[0].text;
+          if (t) { sent += t.length; send({ t }); }
+        }
+      }
+    } catch (e) { /* stream toot gaya — jo mila wahi bhej diya */ }
+    if (!sent) send({ error: "generic" });
+    else send({ done: true });
+    res.end();
   } catch (e) {
-    res.status(502).json({ error: "net", detail: String((e && e.message) || e).slice(0, 200) });
+    if (!res.headersSent) {
+      res.status(502).json({ error: "net", detail: String((e && e.message) || e).slice(0, 200) });
+    } else {
+      try { res.end(); } catch (e2) { /* ignore */ }
+    }
   }
 };
