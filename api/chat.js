@@ -63,8 +63,13 @@ module.exports = async (req, res) => {
     );
 
     if (!r.ok) {
+      let upstream = "";
+      try {
+        const errText = await r.text();
+        upstream = errText.slice(0, 200);
+      } catch (e) { /* ignore */ }
       const status = r.status === 400 || r.status === 403 ? "key" : r.status === 429 ? "quota" : "net";
-      res.status(502).json({ error: status });
+      res.status(502).json({ error: status, upstream: r.status, detail: upstream });
       return;
     }
 
@@ -84,6 +89,6 @@ module.exports = async (req, res) => {
     }
     res.status(200).json({ reply: reply.trim() });
   } catch (e) {
-    res.status(502).json({ error: "net" });
+    res.status(502).json({ error: "net", detail: String((e && e.message) || e).slice(0, 200) });
   }
 };
