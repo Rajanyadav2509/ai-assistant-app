@@ -114,8 +114,56 @@ module.exports = async (req, res) => {
 
   try {
     // 1) Streaming: main model, phir fallback models — jo pehle chal jaye
-    //    wahi use karo. Har attempt max 7s, taaki 3 model bhi budget me aaye.
+    //    wahi use karo. Har attempt max 7s, taaki 4 model bhi budget me aaye.
     let r = null;
+
+    // 0) OpenAI key set hai to PEHLE ChatGPT (gpt-4o-mini) se try karo —
+    //    ye sabse tez hai (1-2 second), isliye fast reply ke liye yahi
+    //    pehla rasta hai. Key set nahi hai to ye step chupchaap skip ho
+    //    jata hai aur neeche Gemini try hota hai.
+    if (process.env.OPENAI_API_KEY && elapsed() < TOTAL_BUDGET_MS - 8000) {
+      try {
+        const openaiMessages = [
+          { role: "system", content: SYSTEM_PROMPTS[mode] },
+          ...messages.map((m) => ({ role: m.role === "user" ? "user" : "assistant", content: String(m.text || "").slice(0, 4000) })),
+        ];
+        const r3 = await fetchTimeout("https://api.openai.com/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: "Bearer " + process.env.OPENAI_API_KEY,
+          },
+          body: JSON.stringify({
+            model: "gpt-4o-mini",
+            messages: openaiMessages,
+            temperature: 0.8,
+            max_tokens: MAX_TOKENS[mode] || 600,
+          }),
+        }, ATTEMPT_TIMEOUT_MS);
+        if (r3.ok) {
+          const data3 = await r3.json();
+          const reply3 = data3 && data3.choices && data3.choices[0] && data3.choices[0].message && data3.choices[0].message.content;
+          if (reply3) {
+            res.writeHead(200, {
+              "Content-Type": "text/event-stream",
+              "Cache-Control": "no-cache",
+              Connection: "keep-alive",
+            });
+            res.write("data: " + JSON.stringify({ t: reply3.trim() }) + "\n\n");
+            res.write("data: " + JSON.stringify({ done: true }) + "\n\n");
+            res.end();
+            return;
+          }
+        } else {
+          lastStatus = r3.status;
+          try { lastText = (await r3.text()).slice(0, 200); } catch (e) { /* ignore */ }
+        }
+      } catch (e) {
+        lastStatus = 0;
+        lastText = "timeout";
+      }
+    }
+
     const models = [MODEL, ...FALLBACK_MODELS].filter((m, i, a) => a.indexOf(m) === i);
     for (const m of models) {
       if (elapsed() > 18000) break;
@@ -152,52 +200,6 @@ module.exports = async (req, res) => {
         } else {
           lastStatus = r2.status;
           try { lastText = (await r2.text()).slice(0, 200); } catch (e) { /* ignore */ }
-        }
-      } catch (e) {
-        lastStatus = 0;
-        lastText = "timeout";
-      }
-    }
-
-    // 3) Gemini ke saare models fail ho gaye aur OpenAI key set hai to
-    //    ChatGPT (gpt-4o-mini) se jawab lo — ye tez aur reliable hai.
-    //    Key set nahi hai to ye step chupchaap skip ho jata hai.
-    if (!r && process.env.OPENAI_API_KEY && elapsed() < TOTAL_BUDGET_MS - 8000) {
-      try {
-        const openaiMessages = [
-          { role: "system", content: SYSTEM_PROMPTS[mode] },
-          ...messages.map((m) => ({ role: m.role === "user" ? "user" : "assistant", content: String(m.text || "").slice(0, 4000) })),
-        ];
-        const r3 = await fetchTimeout("https://api.openai.com/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: "Bearer " + process.env.OPENAI_API_KEY,
-          },
-          body: JSON.stringify({
-            model: "gpt-4o-mini",
-            messages: openaiMessages,
-            temperature: 0.8,
-            max_tokens: MAX_TOKENS[mode] || 600,
-          }),
-        }, ATTEMPT_TIMEOUT_MS);
-        if (r3.ok) {
-          const data3 = await r3.json();
-          const reply3 = data3 && data3.choices && data3.choices[0] && data3.choices[0].message && data3.choices[0].message.content;
-          if (reply3) {
-            res.writeHead(200, {
-              "Content-Type": "text/event-stream",
-              "Cache-Control": "no-cache",
-              Connection: "keep-alive",
-            });
-            res.write("data: " + JSON.stringify({ t: reply3.trim() }) + "\n\n");
-            res.write("data: " + JSON.stringify({ done: true }) + "\n\n");
-            res.end();
-            return;
-          }
-        } else {
-          lastStatus = r3.status;
-          try { lastText = (await r3.text()).slice(0, 200); } catch (e) { /* ignore */ }
         }
       } catch (e) {
         lastStatus = 0;
