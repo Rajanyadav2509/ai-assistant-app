@@ -117,6 +117,52 @@ module.exports = async (req, res) => {
     //    wahi use karo. Har attempt max 7s, taaki 4 model bhi budget me aaye.
     let r = null;
 
+    // -1) Groq key set hai to SABSE PEHLE Groq se try karo — Groq free
+    //    hai aur sabse tez hai (Llama model, turant jawab). Key set nahi
+    //    hai to ye step chupchaap skip ho jata hai.
+    if (process.env.GROQ_API_KEY && elapsed() < TOTAL_BUDGET_MS - 8000) {
+      try {
+        const groqMessages = [
+          { role: "system", content: SYSTEM_PROMPTS[mode] },
+          ...messages.map((m) => ({ role: m.role === "user" ? "user" : "assistant", content: String(m.text || "").slice(0, 4000) })),
+        ];
+        const rG = await fetchTimeout("https://api.groq.com/openai/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: "Bearer " + process.env.GROQ_API_KEY,
+          },
+          body: JSON.stringify({
+            model: "llama-3.3-70b-versatile",
+            messages: groqMessages,
+            temperature: 0.8,
+            max_tokens: MAX_TOKENS[mode] || 600,
+          }),
+        }, ATTEMPT_TIMEOUT_MS);
+        if (rG.ok) {
+          const dataG = await rG.json();
+          const replyG = dataG && dataG.choices && dataG.choices[0] && dataG.choices[0].message && dataG.choices[0].message.content;
+          if (replyG) {
+            res.writeHead(200, {
+              "Content-Type": "text/event-stream",
+              "Cache-Control": "no-cache",
+              Connection: "keep-alive",
+            });
+            res.write("data: " + JSON.stringify({ t: replyG.trim() }) + "\n\n");
+            res.write("data: " + JSON.stringify({ done: true }) + "\n\n");
+            res.end();
+            return;
+          }
+        } else {
+          lastStatus = rG.status;
+          try { lastText = (await rG.text()).slice(0, 200); } catch (e) { /* ignore */ }
+        }
+      } catch (e) {
+        lastStatus = 0;
+        lastText = "timeout";
+      }
+    }
+
     // 0) OpenAI key set hai to PEHLE ChatGPT (gpt-4o-mini) se try karo —
     //    ye sabse tez hai (1-2 second), isliye fast reply ke liye yahi
     //    pehla rasta hai. Key set nahi hai to ye step chupchaap skip ho
