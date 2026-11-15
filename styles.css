@@ -251,3 +251,62 @@ body {
   .brand-text p { display: none; }
   .top-actions .btn.small { padding: 6px 10px; font-size: 12px; }
 }
+
+/* Mode tabs: Chat | Exam Prep | Dost Mode */
+.modes {
+  display: flex;
+  gap: 8px;
+  padding: 10px 16px 0;
+}
+.mode-btn {
+  flex: 1;
+  background: var(--navy-2);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 9px 10px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.mode-btn.active {
+  background: var(--green);
+  border-color: var(--green);
+  color: #052e16;
+  font-weight: 600;
+}
+
+/* Message action buttons (Sunao / Copy / PDF / Dobara) */
+.msg-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+.action-btn {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--green-soft);
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.action-btn:hover { border-color: var(--green); }
+
+/* PDF notes: sirf print karte time dikhe */
+#printArea { display: none; }
+@media print {
+  body { background: #fff; }
+  .app, .toast, .modal { display: none !important; }
+  #printArea {
+    display: block !important;
+    color: #000;
+    background: #fff;
+    padding: 24px;
+    font-size: 14px;
+    line-height: 1.65;
+  }
+  #printArea h1 { font-size: 20px; margin-bottom: 4px; }
+  #printArea .print-meta { color: #555; font-size: 12px; margin-bottom: 18px; }
+  #printArea pre { white-space: pre-wrap; font-family: inherit; margin: 0; }
+}

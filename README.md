@@ -6,12 +6,20 @@ Chat karo, bol kar poochho, aur jawab suno. Hindi aur English dono me.
 ## Features
 
 - **Chat with AI** — Google Gemini API se asli jawab (free key se)
+- **3 modes** — upar se mode chuno:
+  - **Chat** — har roz ke sawal, likhna, samajhna, ideas
+  - **Exam Prep** — exam-focused notes, important questions, quiz aur revision plan (GTU / B.Tech ke liye perfect)
+  - **Dost Mode** — dost jaisa support: motivation, stress kam karne ke tips, aur dil se baatein
+- **PDF notes** — kisi bhi AI jawab ke neeche **PDF** button dabao: notes ka saaf page banega, print dialog me **Save as PDF** chuno. Hindi notes bhi sahi print hote hain.
 - **Voice input** — mic button se bol kar poochho (Chrome me)
 - **Voice reply** — jawab bol kar sunaya bhi ja sakta hai
 - **Hindi + English** — jis bhasha me likho, usi me jawab
+- **Copy, Dobara (regenerate), Sunao** — har AI jawab ke neeche buttons
 - **Chat history** — purani chat aapke device me save rehti hai
 - **PWA — phone me install** — link kholo, "Install App" dabao, aur ye phone me ek app ki tarah install ho jayega
 - **Share** — link kisi ko bhi bhejo, woh apne phone me use kar sakta hai
+- **24/7 available** — ye ek static site hai, iska koi server nahi jo band ho. Vercel par host hone ke baad ye hamesha online rahega — raat 2 baje bhi, dost aur personal guide ki tarah
+- **Shared key (optional)** — server par key set ho to kisi ko key dalne ki zaroorat nahi; key Vercel ke Environment Variables me secret rehti hai, code me kabhi nahi aati
 - **Private by design** — API key sirf aapke device (localStorage) me save hoti hai, kisi server par nahi jaati
 
 ## Files
@@ -30,6 +38,24 @@ ai-assistant-app/
 
 Koi build step nahi hai, koi server code nahi hai. Sirf static files hain —
 kahin bhi host kar sakte ho.
+
+## Shared app — ek key, sabke liye (Vercel)
+
+App bina key maange sabke liye chal sakta hai. Iske liye key code me NAHI,
+Vercel ke Environment Variables me save hoti hai — key kabhi public nahi hoti.
+
+1. Vercel dashboard me project kholo → **Settings → Environment Variables**.
+2. **Add New**: Name `GEMINI_API_KEY`, Value me apni Gemini API key paste karo.
+   (Key yahan se lo: https://aistudio.google.com/apikey — free hai.)
+3. Save karne ke baad **Deployments** me jao → latest deployment par **... → Redeploy**.
+4. Ab jo bhi live link kholega, use bina key dale AI jawab milenge.
+   Key sirf Vercel ke server par rehti hai — GitHub, browser ya kisi user ko
+   kabhi nahi dikhti.
+
+Note: free Gemini key ki daily limit hoti hai, aur woh limit sab users me
+share hoti hai. Normal use ke liye kaafi hai. Agar koi apni key use karna
+chahe, to app ke Settings me apni key dal sakta hai — phir uska jawab uske
+apne quota se chalega.
 
 ## Step 1 — Free Gemini API key lo (2 minute)
 

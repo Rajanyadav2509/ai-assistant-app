@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Riya AI — AI Assistant</title>
-<meta name="description" content="Riya AI — apna personal AI assistant. Chat karo, bolo, aur jawab suno. Hindi aur English me.">
+<meta name="description" content="Riya AI — apna personal AI assistant. Chat karo, bolo, aur jawab suno. Exam Prep, notes PDF aur dost jaisa support — Hindi aur English me.">
 <meta name="theme-color" content="#0a1628">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" type="image/png" href="icons/icon-192.png">
@@ -28,6 +28,12 @@
       <button id="settingsBtn" class="btn small" type="button">Settings</button>
     </div>
   </header>
+
+  <nav class="modes" id="modes" aria-label="Assistant mode">
+    <button class="mode-btn active" data-mode="chat" type="button">Chat</button>
+    <button class="mode-btn" data-mode="exam" type="button">Exam Prep</button>
+    <button class="mode-btn" data-mode="dost" type="button">Dost Mode</button>
+  </nav>
 
   <main id="chat" class="chat" aria-live="polite"></main>
 
@@ -82,11 +88,12 @@
       <button id="saveSettingsBtn" class="btn primary" type="button">Save</button>
       <button id="closeSettingsBtn" class="btn" type="button">Close</button>
     </div>
-    <p class="hint">Key nahi hai? Google AI Studio (aistudio.google.com) par free account banao, "Get API key" par click karo, aur key yahan paste karo. Key ke bina assistant demo mode me chalega.</p>
+    <p class="hint">Is shared app me key pehle se set hai — key dalna zaroori nahi hai, app bina key ke bhi chalega. Agar aap apni key use karna chahte ho (apne quota se), to yahan dal sakte ho. Apni key yahan se lo: Google AI Studio (aistudio.google.com) par free account banao, "Get API key" par click karo.</p>
   </div>
 </div>
 
 <div id="toast" class="toast hidden"></div>
+<div id="printArea" aria-hidden="true"></div>
 <script src="app.js"></script>
 </body>
 </html>

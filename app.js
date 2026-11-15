@@ -1,4 +1,6 @@
-/* Riya AI Assistant — chat + voice + Gemini API + PWA
+/* Riya AI Assistant v2 — chat + voice + Gemini API + PWA
+   Modes: Chat | Exam Prep | Dost Mode
+   PDF notes: print-to-PDF (Hindi bhi sahi print hota hai).
    API key sirf user ke browser (localStorage) me save hoti hai.
    Key Google ke Gemini API ko jaati hai, aur kahin nahi. */
 
@@ -21,6 +23,7 @@ const defaults = {
   assistantName: "Riya",
   lang: "auto",       // auto | hi | en
   voiceReply: true,
+  mode: "chat",       // chat | exam | dost
 };
 let settings = { ...defaults };
 try {
@@ -33,43 +36,87 @@ function saveSettings() {
   $("appName").textContent = settings.assistantName + " AI";
 }
 
+/* ---------- Modes ---------- */
+const MODES = {
+  chat: {
+    label: "Chat",
+    placeholder: "Kuch bhi poochho...",
+    welcome: "Namaste! Main {name} hoon, aapki AI assistant. Aap mujhse kuch bhi poochh sakte ho — likh kar ya bol kar. Hindi ya English, jo aapko pasand ho.",
+    modeOn: "Chat mode on hai.",
+    chips: ["LinkedIn post idea do", "Caption likho", "Email draft likho", "Aasan bhasha me samjhao"],
+    system: "You are {name}, a helpful, polite AI assistant. " +
+      "Reply in the same language the user writes in: if the user writes in Hindi (or Hinglish), reply in Hindi; if in English, reply in English. " +
+      "Keep answers clear, short and useful. Use simple formatting, no long lectures. " +
+      "If asked who made you, say you are an AI assistant built for everyday help.",
+  },
+  exam: {
+    label: "Exam Prep",
+    placeholder: "Kis topic ke notes chahiye? (jaise: ML Unit 1)",
+    welcome: "Exam Prep mode on hai! Main tumhari GTU exam taiyaari me madad karungi — notes, important questions, quiz aur revision plan. Kis subject ya topic se shuru karein?",
+    modeOn: "Exam Prep mode on hai — notes, important questions, quiz aur revision plan ke liye taiyaar hoon.",
+    chips: ["Is topic ke notes banao", "Important questions batao", "5 question ka quiz lo", "7 din ka revision plan banao"],
+    system: "You are {name}, an exam preparation coach for a B.Tech Electronics and Communication student (GTU). " +
+      "Give exam-focused, point-wise, easy-to-remember notes. Use clear headings, short bullet points, simple definitions, formulas where needed, and real examples. " +
+      "End every notes answer with 3 to 5 important questions (with very short answers) that could come in the exam. " +
+      "When the user asks for a quiz, ask questions one by one and check each answer before moving on. " +
+      "Reply in the same language the user writes in (Hindi, Hinglish or English). " +
+      "Keep the structure clean so the notes can be saved as a PDF.",
+  },
+  dost: {
+    label: "Dost Mode",
+    placeholder: "Kya haal hai? Kuch bhi batao...",
+    welcome: "Dost mode on hai! Main yahan hoon — padhai, stress, ya bas baatein, kuch bhi share kar sakte ho. Aaj kaisa din raha?",
+    modeOn: "Dost mode on hai — main tumhari dost ki tarah yahin hoon.",
+    chips: ["Aaj ka motivation do", "Padhai ke liye motivate karo", "Thoda mazak sunao", "Stress kam karne ke tips do"],
+    system: "You are {name}, the user's close friend — warm, supportive, fun and honest. " +
+      "Talk like a real friend in Hinglish/Hindi. Motivate, listen, joke lightly, and help with studies without sounding like a textbook. " +
+      "If the user is stressed or low, be kind first, then give one small practical step. " +
+      "Reply in the same language the user writes in.",
+  },
+};
+const mode = () => MODES[settings.mode] || MODES.chat;
+
 /* ---------- UI text (Hindi default, English when chosen) ---------- */
 const STRINGS = {
   hi: {
-    placeholder: "Kuch bhi poochho...",
-    welcome: "Namaste! Main {name} hoon, aapki AI assistant. Aap mujhse kuch bhi poochh sakte ho — likh kar ya bol kar. Hindi ya English, jo aapko pasand ho.",
     needKey: "API key set nahi hai, isliye main demo mode me hoon. Asli jawab ke liye Settings me apni free Gemini API key dalo.",
     listening: "Sun rahi hoon... bolo",
     micUnsupported: "Is browser me mic support nahi hai. Chrome app me kholo.",
     thinking: "Soch rahi hoon",
     speak: "Sunao",
+    copy: "Copy",
+    pdf: "PDF",
+    again: "Dobara",
+    copied: "Copy ho gaya.",
     errorKey: "API key galat lagti hai. Settings me key dobara check karo.",
     errorQuota: "Aaj ki free limit khatam ho gayi lagti hai. Thodi der baad try karo.",
     errorNet: "Internet se connect nahi ho pa raha. Connection check karo aur dobara try karo.",
     errorGeneric: "Kuch gadbad ho gayi. Dobara try karo.",
+    errorProxy: "Server se jawab nahi mila. Thodi der baad dobara try karo.",
     cleared: "Chat saaf kar di.",
-    copied: "Link copy ho gaya.",
     shared: "Share kar diya.",
     installed: "App install ho gayi.",
-    chips: ["LinkedIn post idea do", "Caption likho", "Email draft likho", "Aasan bhasha me samjhao"],
+    pdfReady: "Notes ka page taiyaar hai — print dialog me 'Save as PDF' chuno.",
   },
   en: {
-    placeholder: "Ask anything...",
-    welcome: "Hello! I am {name}, your AI assistant. Ask me anything — by typing or speaking. Hindi or English, whichever you like.",
     needKey: "No API key set, so I am running in demo mode. Add your free Gemini API key in Settings for real answers.",
     listening: "Listening... speak now",
     micUnsupported: "Mic is not supported in this browser. Open it in the Chrome app.",
     thinking: "Thinking",
     speak: "Listen",
+    copy: "Copy",
+    pdf: "PDF",
+    again: "Again",
+    copied: "Copied.",
     errorKey: "The API key looks wrong. Please check the key in Settings.",
     errorQuota: "The free limit for today seems over. Try again in a while.",
     errorNet: "Could not reach the internet. Check your connection and try again.",
     errorGeneric: "Something went wrong. Please try again.",
+    errorProxy: "The server did not answer. Please try again in a while.",
     cleared: "Chat cleared.",
-    copied: "Link copied.",
     shared: "Shared.",
     installed: "App installed.",
-    chips: ["Give a LinkedIn post idea", "Write a caption", "Draft an email", "Explain in simple words"],
+    pdfReady: "Notes page is ready — choose 'Save as PDF' in the print dialog.",
   },
 };
 
@@ -92,19 +139,32 @@ function saveHistory() {
   } catch (e) { /* storage full — ignore */ }
 }
 
-function addMsg(text, who, { save = true, speakBtn = false } = {}) {
+function attachActions(div, text) {
+  const row = document.createElement("div");
+  row.className = "msg-actions";
+  const mk = (label, cls, fn) => {
+    const b = document.createElement("button");
+    b.className = "action-btn " + cls;
+    b.type = "button";
+    b.textContent = label;
+    b.onclick = fn;
+    row.appendChild(b);
+    return b;
+  };
+  mk(t("speak"), "speak-btn", () => speak(text));
+  mk(t("copy"), "copy-btn", () => copyText(text));
+  mk(t("pdf"), "pdf-btn", () => downloadNotesPDF(text));
+  // Dobara sirf sabse naye AI message par rakho
+  document.querySelectorAll(".regen-btn").forEach((b) => b.remove());
+  mk(t("again"), "regen-btn", () => regenerateLast());
+  div.appendChild(row);
+}
+
+function addMsg(text, who, { save = true, actions = false } = {}) {
   const div = document.createElement("div");
   div.className = "msg " + who;
   div.textContent = text;
-  if (speakBtn && who === "ai") {
-    const btn = document.createElement("button");
-    btn.className = "speak-btn";
-    btn.type = "button";
-    btn.textContent = t("speak");
-    btn.onclick = () => speak(text);
-    div.appendChild(document.createElement("br"));
-    div.appendChild(btn);
-  }
+  if (actions && who === "ai") attachActions(div, text);
   chatEl.appendChild(div);
   chatEl.scrollTop = chatEl.scrollHeight;
   if (save) {
@@ -116,7 +176,7 @@ function addMsg(text, who, { save = true, speakBtn = false } = {}) {
 
 function renderChips() {
   chipsEl.innerHTML = "";
-  t("chips").forEach((c) => {
+  mode().chips.forEach((c) => {
     const b = document.createElement("button");
     b.className = "chip";
     b.type = "button";
@@ -130,8 +190,24 @@ function showToast(msg) {
   toastEl.textContent = msg;
   toastEl.classList.remove("hidden");
   clearTimeout(showToast._t);
-  showToast._t = setTimeout(() => toastEl.classList.add("hidden"), 3000);
+  showToast._t = setTimeout(() => toastEl.classList.add("hidden"), 3500);
 }
+
+/* ---------- Mode switching ---------- */
+function setMode(next, announce = true) {
+  if (!MODES[next]) next = "chat";
+  settings.mode = next;
+  saveSettings();
+  document.querySelectorAll(".mode-btn").forEach((b) => {
+    b.classList.toggle("active", b.dataset.mode === next);
+  });
+  inputEl.placeholder = mode().placeholder;
+  renderChips();
+  if (announce) addMsg(mode().modeOn, "ai system", { save: false });
+}
+document.querySelectorAll(".mode-btn").forEach((b) => {
+  b.addEventListener("click", () => setMode(b.dataset.mode));
+});
 
 /* ---------- Speech: listen + speak ---------- */
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -188,13 +264,57 @@ micBtn.onclick = () => {
   recognition.start();
 };
 
+/* ---------- Copy, regenerate, PDF notes ---------- */
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    showToast(t("copied"));
+  } catch (e) {
+    showToast(t("copied"));
+  }
+}
+
+function lastUserText() {
+  for (let i = history.length - 1; i >= 0; i--) {
+    if (history[i].role === "user") return history[i].text;
+  }
+  return "";
+}
+
+function downloadNotesPDF(text) {
+  const topic = lastUserText().slice(0, 60) || settings.assistantName + " Notes";
+  const area = $("printArea");
+  area.innerHTML = "";
+  const h = document.createElement("h1");
+  h.textContent = topic;
+  const meta = document.createElement("p");
+  meta.className = "print-meta";
+  meta.textContent = new Date().toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" }) +
+    "  •  " + settings.assistantName + " AI Assistant  •  " + mode().label;
+  const pre = document.createElement("pre");
+  pre.textContent = text;
+  area.append(h, meta, pre);
+  showToast(t("pdfReady"));
+  setTimeout(() => window.print(), 400);
+}
+
+async function regenerateLast() {
+  if (busy) return;
+  const userText = lastUserText();
+  if (!userText) return;
+  // Aakhri AI jawab hatao (history + screen)
+  for (let i = history.length - 1; i >= 0; i--) {
+    if (history[i].role === "model") { history.splice(i, 1); break; }
+  }
+  saveHistory();
+  const aiMsgs = chatEl.querySelectorAll(".msg.ai:not(.typing):not(.system)");
+  if (aiMsgs.length) aiMsgs[aiMsgs.length - 1].remove();
+  await askAndRender(userText);
+}
+
 /* ---------- Gemini API ---------- */
 function systemPrompt() {
-  const name = settings.assistantName;
-  return "You are " + name + ", a helpful, polite AI assistant. " +
-    "Reply in the same language the user writes in: if the user writes in Hindi (or Hinglish), reply in Hindi; if in English, reply in English. " +
-    "Keep answers clear, short and useful. Use simple formatting, no long lectures. " +
-    "If asked who made you, say you are an AI assistant built for everyday help.";
+  return mode().system.replaceAll("{name}", settings.assistantName);
 }
 
 function demoReply(text) {
@@ -216,7 +336,7 @@ async function askGemini(userText) {
     body: JSON.stringify({
       system_instruction: { parts: [{ text: systemPrompt() }] },
       contents,
-      generationConfig: { temperature: 0.8, maxOutputTokens: 1200 },
+      generationConfig: { temperature: 0.8, maxOutputTokens: 1500 },
     }),
   });
 
@@ -235,35 +355,65 @@ async function askGemini(userText) {
 
 /* ---------- Send flow ---------- */
 let busy = false;
-async function sendMessage() {
-  const text = inputEl.value.trim();
-  if (!text || busy) return;
-  inputEl.value = "";
+
+/* Pehle server proxy (/api/chat) try karo — shared key se chalta hai.
+   Agar server par key set nahi hai (501) ya proxy fail ho, to apni
+   Settings wali key se seedha Gemini ko call karo; woh bhi na ho to demo. */
+async function askViaProxy(userText) {
+  const messages = history
+    .filter((h) => h.role === "user" || h.role === "model")
+    .map((h) => ({ role: h.role, text: h.text }));
+  messages.push({ role: "user", text: userText });
+
+  const res = await fetch("/api/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ mode: settings.mode, messages }),
+  });
+  if (res.status === 501) throw new Error("no_proxy_key");
+  if (!res.ok) throw new Error("proxy_fail");
+  const data = await res.json();
+  if (!data.reply) throw new Error("proxy_fail");
+  return data.reply;
+}
+
+async function askAndRender(userText) {
   busy = true;
   sendBtn.disabled = true;
-
-  addMsg(text, "user");
   const typing = addMsg(t("thinking"), "ai typing", { save: false });
-
   try {
     let reply;
-    if (!settings.apiKey) {
-      await new Promise((r) => setTimeout(r, 600));
-      reply = demoReply(text);
-    } else {
-      reply = await askGemini(text);
+    try {
+      reply = await askViaProxy(userText);
+    } catch (proxyErr) {
+      if (settings.apiKey) {
+        reply = await askGemini(userText);
+      } else if (proxyErr.message === "no_proxy_key") {
+        await new Promise((r) => setTimeout(r, 600));
+        reply = demoReply(userText);
+      } else {
+        throw proxyErr;
+      }
     }
     typing.remove();
-    addMsg(reply, "ai", { speakBtn: true });
+    addMsg(reply, "ai", { actions: true });
     speak(reply);
   } catch (err) {
     typing.remove();
-    const map = { key: "errorKey", quota: "errorQuota", net: "errorNet" };
+    const map = { key: "errorKey", quota: "errorQuota", net: "errorNet", proxy_fail: "errorProxy" };
     addMsg(t(map[err.message] || "errorGeneric"), "ai system", { save: false });
   }
   busy = false;
   sendBtn.disabled = false;
   inputEl.focus();
+}
+
+async function sendMessage() {
+  const text = inputEl.value.trim();
+  if (!text || busy) return;
+  inputEl.value = "";
+  addMsg(text, "user");
+  await askAndRender(text);
 }
 
 sendBtn.onclick = sendMessage;
@@ -276,7 +426,7 @@ $("newChatBtn").onclick = () => {
   history = [];
   saveHistory();
   chatEl.innerHTML = "";
-  addMsg(t("welcome").replace("{name}", settings.assistantName), "ai", { save: false });
+  addMsg(mode().welcome.replace("{name}", settings.assistantName), "ai", { save: false });
   showToast(t("cleared"));
 };
 
@@ -341,7 +491,7 @@ $("saveSettingsBtn").onclick = () => {
   settings.lang = $("langSelect").value;
   settings.voiceReply = $("voiceToggle").checked;
   saveSettings();
-  inputEl.placeholder = t("placeholder");
+  inputEl.placeholder = mode().placeholder;
   renderChips();
   closeSettings();
   showToast(settings.apiKey ? "Settings save ho gayi." : t("needKey"));
@@ -349,10 +499,9 @@ $("saveSettingsBtn").onclick = () => {
 
 /* ---------- Init ---------- */
 saveSettings();
-inputEl.placeholder = t("placeholder");
-renderChips();
+setMode(settings.mode, false);
 if (history.length > 0) {
-  history.forEach((h) => addMsg(h.text, h.role === "user" ? "user" : "ai", { save: false, speakBtn: h.role === "model" }));
+  history.forEach((h) => addMsg(h.text, h.role === "user" ? "user" : "ai", { save: false, actions: h.role === "model" }));
 } else {
-  addMsg(t("welcome").replace("{name}", settings.assistantName), "ai", { save: false });
+  addMsg(mode().welcome.replace("{name}", settings.assistantName), "ai", { save: false });
 }
