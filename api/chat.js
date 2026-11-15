@@ -5,7 +5,7 @@
 // browser, GitHub ya kisi user ko kabhi nahi dikhti.
 // Isliye shared app bina key maange sabke liye chalta hai.
 
-const MODEL = process.env.GEMINI_MODEL || "gemini-2.0-flash";
+const MODEL = process.env.GEMINI_MODEL || "gemini-3.8-flash";
 
 const SYSTEM_PROMPTS = {
   chat: "You are Riya, a helpful, polite AI assistant. Reply in the same language the user writes in: if the user writes in Hindi (or Hinglish), reply in Hindi; if in English, reply in English. Keep answers clear, short and useful. Use simple formatting, no long lectures.",
