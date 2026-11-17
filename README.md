@@ -140,3 +140,7 @@ Phir browser me `http://localhost:8080` kholo.
 - Aapki chat history aur API key sirf aapke browser ke localStorage me rehti hai.
 - Chat ke message seedha Google Gemini API ko jaate hain, aur kahin nahi.
 - Is app ka koi apna server ya database nahi hai.
+
+## Preview
+
+![Preview](screenshot.png)
